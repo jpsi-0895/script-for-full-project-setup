@@ -40,3 +40,4 @@ echo "[INFO] Apache2 status:" # Check Apache2 status
 systemctl status apache2 --no-pager # Display Apache2 status    
 
 echo "[INFO] EC2 setup completed successfully!"     # Final log message
+  # to check cat /var/log/user-data.log
