@@ -83,7 +83,6 @@ if [[ -f "package.json" ]]; then
 else
     echo "⚠️ No package.json found, skipping script execution."
 fi
-
 # ================================
 # Menu Loop for User Commands
 # ================================
@@ -98,20 +97,12 @@ while true; do
 
     case $choice in
         1)
-            if grep -q '"start:prod"' package.json; then
-                echo "🚀 Running npm run start:prod ..."
-                npm run start:prod
-            else
-                echo "⚠️ 'start:prod' not defined in package.json"
-            fi
+            echo "🚀 Running npm run start:prod ..."
+            npm run start:prod
             ;;
         2)
-            if grep -q '"dev"' package.json; then
-                echo "🚀 Running npm run dev ..."
-                npm run dev
-            else
-                echo "⚠️ 'dev' not defined in package.json"
-            fi
+            echo "🚀 Running npm run dev ..."
+            npm run dev
             ;;
         3)
             echo "🚀 Running next dev -p 8000 -H 0.0.0.0 ..."
