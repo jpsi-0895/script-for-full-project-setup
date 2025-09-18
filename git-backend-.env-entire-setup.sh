@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# ================================
+# GitHub Project Setup Script
+# ================================
+
 # Ask for GitHub repo URL
 read -p "Enter GitHub repo URL: " REPO_URL
 
@@ -59,27 +63,66 @@ done
 echo "✅ .env file created with your variables:"
 cat "$ENV_FILE"
 
-# Show package.json (before build/start)
+# ================================
+# Check package.json and ask before running
+# ================================
 if [[ -f "package.json" ]]; then
-    echo "📦 package.json contents before build/start:"
-    cat package.json
+    echo ""
+    echo "📦 Checking available npm scripts in package.json..."
+    AVAILABLE_SCRIPTS=$(jq -r '.scripts | keys[]' package.json 2>/dev/null)
+
+    for script in $AVAILABLE_SCRIPTS; do
+        read -p "Do you want to run 'npm run $script'? (y/n): " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            echo "🚀 Running npm run $script ..."
+            npm run "$script"
+        else
+            echo "⏭️ Skipping npm run $script"
+        fi
+    done
 else
-    echo "⚠️ No package.json found, skipping build/start."
-    exit 1
+    echo "⚠️ No package.json found, skipping script execution."
 fi
 
-# Run npm build
-if npm run build; then
-    echo "🎉 Build completed successfully!"
-else
-    echo "❌ Build failed. Check errors above."
-    exit 1
-fi
+# ================================
+# Menu Loop for User Commands
+# ================================
+while true; do
+    echo ""
+    echo "Select an option:"
+    echo "1) Run npm run start:prod"
+    echo "2) Run npm run dev"
+    echo "3) Run next dev -p 8000 -H 0.0.0.0"
+    echo "4) Exit"
+    read -p "Enter your choice [1-4]: " choice
 
-# Run npm start:prod
-if npm run start:prod; then
-    echo "🚀 Application started in production mode!"
-else
-    echo "❌ Failed to start application with 'npm run start:prod'."
-    exit 1
-fi
+    case $choice in
+        1)
+            if grep -q '"start:prod"' package.json; then
+                echo "🚀 Running npm run start:prod ..."
+                npm run start:prod
+            else
+                echo "⚠️ 'start:prod' not defined in package.json"
+            fi
+            ;;
+        2)
+            if grep -q '"dev"' package.json; then
+                echo "🚀 Running npm run dev ..."
+                npm run dev
+            else
+                echo "⚠️ 'dev' not defined in package.json"
+            fi
+            ;;
+        3)
+            echo "🚀 Running next dev -p 8000 -H 0.0.0.0 ..."
+            npx next dev -p 8000 -H 0.0.0.0
+            ;;
+        4)
+            echo "👋 Exiting script."
+            break
+            ;;
+        *)
+            echo "⚠️ Invalid choice. Please try again."
+            ;;
+    esac
+done
