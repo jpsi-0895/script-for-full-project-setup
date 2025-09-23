@@ -44,15 +44,10 @@ echo "Creating $ENV_FILE ..."
 
 # Ask user for environment variables (multi-line paste support)
 echo "Paste your environment variables (key=value). End with 'done' on a new line:"
-
 while IFS= read -r line; do
     [[ "$line" == "done" ]] && break
-
-    # Skip empty lines or comments
     [[ -z "$line" || "$line" =~ ^# ]] && continue
-
     if [[ "$line" == *"="* ]]; then
-        # Clean backticks + trim spaces
         clean_line=$(echo "$line" | sed 's/`//g' | sed 's/^[ \t]*//;s/[ \t]*$//')
         echo "$clean_line" >> "$ENV_FILE"
     else
@@ -64,31 +59,24 @@ echo "✅ .env file created with your variables:"
 cat "$ENV_FILE"
 
 # ================================
-# Check package.json and ask before running
+# Auto Run build & start:prod
 # ================================
 if [[ -f "package.json" ]]; then
-    echo ""
-    echo "📦 Checking available npm scripts in package.json..."
-    AVAILABLE_SCRIPTS=$(jq -r '.scripts | keys[]' package.json 2>/dev/null)
+    echo "🚀 Running npm run build ..."
+    npm run build
 
-    for script in $AVAILABLE_SCRIPTS; do
-        read -p "Do you want to run 'npm run $script'? (y/n): " confirm
-        if [[ "$confirm" =~ ^[Yy]$ ]]; then
-            echo "🚀 Running npm run $script ..."
-            npm run "$script"
-        else
-            echo "⏭️ Skipping npm run $script"
-        fi
-    done
+    echo "🚀 Starting project with npm run start:prod ..."
+    npm run start:prod
 else
-    echo "⚠️ No package.json found, skipping script execution."
+    echo "⚠️ No package.json found, skipping build/start."
 fi
+
 # ================================
 # Menu Loop for User Commands
 # ================================
 while true; do
     echo ""
-    echo "Select an option:"
+    echo "📌 Select an option:"
     echo "1) Run npm run start:prod"
     echo "2) Run npm run dev"
     echo "3) Run next dev -p 8000 -H 0.0.0.0"
