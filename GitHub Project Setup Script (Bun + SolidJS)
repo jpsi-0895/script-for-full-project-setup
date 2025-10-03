@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# ========================================
+# 🚀 GitHub Project Setup Script (Bun + SolidJS)
+# ========================================
+
+set -e  # Exit on error
+set -o pipefail
+
+# ---- Function: Check command availability ----
+check_command() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# ---- Install Git if missing ----
+if ! check_command git; then
+    echo "📥 Installing Git ..."
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        sudo apt-get update -y && sudo apt-get install -y git
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        brew install git
+    else
+        echo "❌ Unsupported OS. Please install Git manually."
+        exit 1
+    fi
+fi
+
+# ---- Install Bun if missing ----
+
+
+if ! check_command bun; then
+    echo "📥 Installing Bun ..."
+    curl -fsSL https://bun.sh/install | bash
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+
+# ---- Ask for GitHub Repo URL ----
+sudo snap install bun-js
+read -p "Enter GitHub repo URL: " REPO_URL
+[[ -z "$REPO_URL" ]] && { echo "❌ Repo URL required!"; exit 1; }
+
+# ---- Ask for Target Folder ----
+read -p "Enter target folder name (default: repo): " TARGET_DIR
+TARGET_DIR=${TARGET_DIR:-repo}
+
+# ---- Clone Repo ----
+if [[ -d "$TARGET_DIR" ]]; then
+    echo "⚠️ Folder '$TARGET_DIR' already exists. Skipping clone."
+else
+    echo "📥 Cloning repo..."
+    git clone "$REPO_URL" "$TARGET_DIR"
+fi
+
+cd "$TARGET_DIR" || { echo "❌ Failed to enter folder"; exit 1; }
+
+# ---- Show package.json (Optional for Bun) ----
+if [[ -f "package.json" ]]; then
+    echo "📦 package.json contents:"
+    jq '.name, .scripts' package.json 2>/dev/null || cat package.json
+else
+    echo "⚠️ No package.json found."
+fi
+
+# ---- Install dependencies ----
+echo "📥 Installing dependencies with Bun ..."
+bun install
+
+echo "✅ Repo cloned and dependencies installed in $(pwd)"
+
+# ---- Create .env file ----
+ENV_FILE=".env"
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "📝 Creating $ENV_FILE ..."
+    : > "$ENV_FILE"
+
+    echo "Paste your environment variables (key=value). End with 'done' on a new line:"
+    while IFS= read -r line; do
+        [[ "$line" == "done" ]] && break
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        if [[ "$line" == *"="* ]]; then
+            clean_line=$(echo "$line" | sed 's/`//g' | sed 's/^[ \t]*//;s/[ \t]*$//')
+            echo "$clean_line" >> "$ENV_FILE"
+        else
+            echo "⚠️ Invalid format. Use key=value"
+        fi
+    done
+fi
+
+echo "✅ .env file ready:"
+cat "$ENV_FILE"
+
+# ---- Auto Run Build & Start ----
+if [[ -f "package.json" ]]; then
+    if grep -q "\"build\"" package.json; then
+        echo "🚀 Running bun run build ..."
+        bun run build
+    fi
+    if grep -q "\"start:prod\"" package.json; then
+        echo "🚀 Starting project with bun run start:prod ..."
+        bun run start:prod
+    fi
+else
+    echo "⚠️ No package.json found, skipping build/start."
+fi
+
+# ---- Menu Loop ----
+while true; do
+    echo ""
+    echo "📌 Select an option:"
+    echo "1) Run bun run start:prod"
+    echo "2) Run bun run dev"
+    echo "3) Run bunx solid-start dev --port 8000 --host 0.0.0.0"
+    echo "4) Exit"
+    read -p "Enter your choice [1-4]: " choice
+
+    case $choice in
+        1)
+            echo "🚀 Running bun run start:prod ..."
+            bun run start:prod
+            ;;
+        2)
+            echo "🚀 Running bun run dev ..."
+            bun run dev
+            ;;
+        3)
+            echo "🚀 Running SolidJS dev server on 0.0.0.0:3000 ..."
+            bunx solid-start dev --port 8000 --host 0.0.0.0
+            ;;
+        4)
+            echo "👋 Exiting script."
+            break
+            ;;
+        *)
+            echo "⚠️ Invalid choice. Please try again."
+            ;;
+    esac
+done
