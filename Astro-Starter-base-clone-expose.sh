@@ -52,6 +52,29 @@ cd "$TARGET_DIR"    # Change to the target directory
 echo "📦 Installing dependencies..."
 npm install   # Install project dependencies
 
+# ---- Create .env file ----
+ENV_FILE=".env"
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "📝 Creating $ENV_FILE ..."
+    : > "$ENV_FILE"
+
+    echo "Paste your environment variables (key=value). End with 'done' on a new line:"
+    while IFS= read -r line; do
+        [[ "$line" == "done" ]] && break
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        if [[ "$line" == *"="* ]]; then
+            clean_line=$(echo "$line" | sed 's/`//g' | sed 's/^[ \t]*//;s/[ \t]*$//')
+            echo "$clean_line" >> "$ENV_FILE"
+        else
+            echo "⚠️ Invalid format. Use key=value"
+        fi
+    done
+fi
+
+echo "✅ .env file ready:"
+cat "$ENV_FILE"
+
+
 # --- Step 7: Build Astro ---
 echo "🏗️  Building Astro project..."
 npm run build   # Build the Astro project
