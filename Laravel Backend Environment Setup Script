@@ -3,61 +3,62 @@
 # PHP + MySQL + Composer + Clone Repo
 # Clean version: NO logging, NO error-handling wrappers
 
-set -euo pipefail
+set -euo pipefail  # Exit on error, undefined var, or pipe failure
 
 # ---------------- CONFIG ----------------
-PHP_VERSION="${1:-8.2}"
+PHP_VERSION="${1:-8.2}" # Default to PHP 8.2 if not provided
 
 echo "===================================="
-echo "🔧 Starting Laravel Environment Setup"
+echo "🔧 Starting Laravel Environment Setup" 
 echo "===================================="
 
 # ---------------- UPDATE + BASICS ----------------
-sudo apt update -y
-sudo apt install -y software-properties-common apt-transport-https ca-certificates gnupg curl git
+sudo apt update -y # Update package lists
+sudo apt upgrade -y # Upgrade installed packages
+sudo apt install -y software-properties-common apt-transport-https ca-certificates gnupg curl git # Basic tools
 
 # ---------------- INSTALL PHP ----------------
-sudo add-apt-repository ppa:ondrej/php -y
-sudo apt update -y
+sudo add-apt-repository ppa:ondrej/php -y # Add PHP PPA
+sudo apt update -y # Update package lists again
 
-sudo apt install -y \
-  php${PHP_VERSION} php${PHP_VERSION}-cli php${PHP_VERSION}-fpm \
-  php${PHP_VERSION}-common php${PHP_VERSION}-mysql php${PHP_VERSION}-xml \
-  php${PHP_VERSION}-mbstring php${PHP_VERSION}-curl php${PHP_VERSION}-zip \
-  php${PHP_VERSION}-bcmath php${PHP_VERSION}-intl php${PHP_VERSION}-gd \
-  php${PHP_VERSION}-tokenizer || {
+sudo apt install -y \   # Install PHP and extensions
+  php${PHP_VERSION} php${PHP_VERSION}-cli php${PHP_VERSION}-fpm \           # Install PHP-FPM
+  php${PHP_VERSION}-common php${PHP_VERSION}-mysql php${PHP_VERSION}-xml \     # XML support
+  php${PHP_VERSION}-mbstring php${PHP_VERSION}-curl php${PHP_VERSION}-zip \      # Common extensions
+  php${PHP_VERSION}-bcmath php${PHP_VERSION}-intl php${PHP_VERSION}-gd \     # Additional extensions
+  php${PHP_VERSION}-tokenizer || {       # Retry without tokenizer if it fails
 
-  echo "Retrying PHP install without tokenizer..."
+  echo "Retrying PHP install without tokenizer..."         # Retry logic
   sudo apt install -y \
-    php${PHP_VERSION} php${PHP_VERSION}-cli php${PHP_VERSION}-fpm \
-    php${PHP_VERSION}-common php${PHP_VERSION}-mysql php${PHP_VERSION}-xml \
-    php${PHP_VERSION}-mbstring php${PHP_VERSION}-curl php${PHP_VERSION}-zip \
-    php${PHP_VERSION}-bcmath php${PHP_VERSION}-intl php${PHP_VERSION}-gd
+    php${PHP_VERSION} php${PHP_VERSION}-cli php${PHP_VERSION}-fpm \         # Install PHP-FPM
+    php${PHP_VERSION}-common php${PHP_VERSION}-mysql php${PHP_VERSION}-xml \          # XML support
+    php${PHP_VERSION}-mbstring php${PHP_VERSION}-curl php${PHP_VERSION}-zip \           # Common extensions
+    php${PHP_VERSION}-bcmath php${PHP_VERSION}-intl php${PHP_VERSION}-gd     # Additional extensions
 }
 
 # Restart PHP-FPM if exists
-if systemctl list-units | grep -q "php${PHP_VERSION}-fpm"; then
-  sudo systemctl restart "php${PHP_VERSION}-fpm"
+if systemctl list-units | grep -q "php${PHP_VERSION}-fpm"; then   # Check if service exists
+  sudo systemctl restart "php${PHP_VERSION}-fpm"   # Restart PHP-FPM
 fi
 
 # ---------------- INSTALL MYSQL ----------------
-sudo apt install -y mysql-server
-sudo systemctl enable mysql
-sudo systemctl start mysql
+sudo apt install -y mysql-server           # Install MySQL server
+sudo systemctl enable mysql          # Enable MySQL to start on boot 
+sudo systemctl start mysql         # Start MySQL service
 
 # ---------------- INSTALL COMPOSER ----------------
-if ! command -v composer &>/dev/null; then
-  curl -sS https://getcomposer.org/installer -o composer-setup.php
-  sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
-  rm composer-setup.php
+if ! command -v composer &>/dev/null; then         # Check if Composer is not installed
+  curl -sS https://getcomposer.org/installer -o composer-setup.php      # Download Composer installer
+  sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer     # Install Composer globally
+  rm composer-setup.php        # Clean up installer
 fi
 
 # ---------------- CLONE GITHUB REPO ----------------
-echo ""
-read -p "Enter GitHub Repo URL: " REPO_URL
-[[ -z "$REPO_URL" ]] && { echo "Repo URL is required!"; exit 1; }
+echo ""         ## New line for readability
+read -p "Enter GitHub Repo URL: " REPO_URL  # Prompt for repo URL
+[[ -z "$REPO_URL" ]] && { echo "Repo URL is required!"; exit 1; }  # Exit if empty
 
-git clone "$REPO_URL"
+git clone "$REPO_URL"  # Clone the specified repo
 
 # ======================================================
 # SHOW INSTALLED VERSIONS & SERVICE STATUS
@@ -68,30 +69,30 @@ echo "===================================="
 echo "📊 INSTALLATION SUMMARY"
 echo "===================================="
 
-echo "➡ PHP Version:"
-php -v | head -n 1
-echo ""
+echo "➡ PHP Version:"  #   Display PHP version  
+php -v | head -n 1   # Get first line of PHP version
+echo ""  # New line for readability
 
-echo "➡ PHP-FPM Service:"
-sudo systemctl status php${PHP_VERSION}-fpm --no-pager | head -n 5
-echo ""
+echo "➡ PHP-FPM Service:"  # Display PHP-FPM service status
+sudo systemctl status php${PHP_VERSION}-fpm --no-pager | head -n 5  # Get first 5 lines of status
+echo ""   # New line for readability
 
-echo "➡ MySQL Version:"
-mysql --version
-echo ""
+echo "➡ MySQL Version:"  # Display MySQL version
+mysql --version  # Get MySQL version
+echo ""  # New line for readability
 
-echo "➡ MySQL Service:"
-sudo systemctl status mysql --no-pager | head -n 5
-echo ""
+echo "➡ MySQL Service:"  # Display MySQL service status
+sudo systemctl status mysql --no-pager | head -n 5  # Get first 5 lines of status
+echo ""     # New line for readability
 
-echo "➡ Composer Version:"
-composer -V
-echo ""
+echo "➡ Composer Version:"     # Display Composer version
+composer -V  # Get Composer version
+echo ""   # New line for readability    
 
-echo "➡ Git Version:"
-git --version
-echo ""
+echo "➡ Git Version:"       # Display Git version
+git --version               # Get Git version
+echo ""                    # New line for readability
 
 echo "===================================="
-echo "🎉 Setup complete!"
+echo "🎉 Setup complete!"                               
 echo "===================================="
