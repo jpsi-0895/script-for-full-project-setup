@@ -1,98 +1,163 @@
 #!/usr/bin/env bash
-# Minimal Laravel environment setup
-# PHP + MySQL + Composer + Clone Repo
-# Clean version: NO logging, NO error-handling wrappers
+# Minimal Laravel environment setup (robust)
+# Usage: ./setup-laravel.sh [PHP_VERSION]
+# Example: ./setup-laravel.sh 8.2
 
-set -euo pipefail  # Exit on error, undefined var, or pipe failure
+set -euo pipefail
 
-# ---------------- CONFIG ----------------
-PHP_VERSION="${1:-8.2}" # Default to PHP 8.2 if not provided
+PHP_VERSION="${1:-8.2}"  # default to 8.2
+REQUIRED_PACKAGES=(software-properties-common apt-transport-https ca-certificates gnupg curl git lsb-release)
 
 echo "===================================="
-echo "🔧 Starting Laravel Environment Setup" 
+echo "🔧 Starting Laravel Environment Setup"
+echo "  PHP target: ${PHP_VERSION}"
 echo "===================================="
 
-# ---------------- UPDATE + BASICS ----------------
-sudo apt update -y # Update package lists
-sudo apt upgrade -y # Upgrade installed packages
-sudo apt install -y software-properties-common apt-transport-https ca-certificates gnupg curl git # Basic tools
+# Helper
+info()   { printf " [\e[1;34m..\e[0m] %s\n" "$*"; }
+ok()     { printf " [\e[1;32mOK\e[0m] %s\n" "$*"; }
+err()    { printf " [\e[1;31m!!\e[0m] %s\n" "$*" >&2; }
 
-# ---------------- INSTALL PHP ----------------
-sudo add-apt-repository ppa:ondrej/php -y # Add PHP PPA
-sudo apt update -y # Update package lists again
+# Update + basic tools
+info "Updating apt and installing prerequisites..."
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt install -y "${REQUIRED_PACKAGES[@]}"
 
-sudo apt install -y \   # Install PHP and extensions
-  php${PHP_VERSION} php${PHP_VERSION}-cli php${PHP_VERSION}-fpm \           # Install PHP-FPM
-  php${PHP_VERSION}-common php${PHP_VERSION}-mysql php${PHP_VERSION}-xml \     # XML support
-  php${PHP_VERSION}-mbstring php${PHP_VERSION}-curl php${PHP_VERSION}-zip \      # Common extensions
-  php${PHP_VERSION}-bcmath php${PHP_VERSION}-intl php${PHP_VERSION}-gd \     # Additional extensions
-  php${PHP_VERSION}-tokenizer || {       # Retry without tokenizer if it fails
+CODENAME="$(lsb_release -cs)"
+info "Detected Ubuntu codename: ${CODENAME}"
 
-  echo "Retrying PHP install without tokenizer..."         # Retry logic
+# Try to add Ondřej PPA (safe): add only if not already present
+if ! grep -h "^deb .\+ondrej/php" /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null | grep -q .; then
+  info "Adding ondrej/php PPA (will be attempted) ..."
+  # add-apt-repository prints errors if unsupported; capture result but continue
+  if sudo add-apt-repository -y ppa:ondrej/php; then
+    ok "Ondřej PPA added (attempted)."
+  else
+    err "Failed to add ondrej/php PPA. Continuing — will try distro packages as fallback."
+  fi
+else
+  info "Ondřej PPA already present."
+fi
+
+info "Refreshing package lists..."
+sudo apt update -y
+
+# Check whether requested php${PHP_VERSION}-fpm is available
+PKG="php${PHP_VERSION}-fpm"
+info "Checking availability of package: ${PKG}"
+if apt-cache policy "${PKG}" | grep -q 'Candidate:'; then
+  CANDIDATE_LINE="$(apt-cache policy "${PKG}" | grep -m1 'Candidate:')"
+  if echo "${CANDIDATE_LINE}" | grep -qi '(none)'; then
+    AVAILABLE=false
+  else
+    AVAILABLE=true
+  fi
+else
+  AVAILABLE=false
+fi
+
+if [ "${AVAILABLE}" = true ]; then
+  info "Package ${PKG} appears available. Installing PHP ${PHP_VERSION} and recommended extensions..."
   sudo apt install -y \
-    php${PHP_VERSION} php${PHP_VERSION}-cli php${PHP_VERSION}-fpm \         # Install PHP-FPM
-    php${PHP_VERSION}-common php${PHP_VERSION}-mysql php${PHP_VERSION}-xml \          # XML support
-    php${PHP_VERSION}-mbstring php${PHP_VERSION}-curl php${PHP_VERSION}-zip \           # Common extensions
-    php${PHP_VERSION}-bcmath php${PHP_VERSION}-intl php${PHP_VERSION}-gd     # Additional extensions
-}
-
-# Restart PHP-FPM if exists
-if systemctl list-units | grep -q "php${PHP_VERSION}-fpm"; then   # Check if service exists
-  sudo systemctl restart "php${PHP_VERSION}-fpm"   # Restart PHP-FPM
+    php"${PHP_VERSION}" \
+    php"${PHP_VERSION}"-cli \
+    php"${PHP_VERSION}"-fpm \
+    php"${PHP_VERSION}"-common \
+    php"${PHP_VERSION}"-mysql \
+    php"${PHP_VERSION}"-xml \
+    php"${PHP_VERSION}"-mbstring \
+    php"${PHP_VERSION}"-curl \
+    php"${PHP_VERSION}"-zip \
+    php"${PHP_VERSION}"-bcmath \
+    php"${PHP_VERSION}"-intl \
+    php"${PHP_VERSION}"-gd \
+    php"${PHP_VERSION}"-tokenizer
+  ok "PHP ${PHP_VERSION} installed from available repositories."
+else
+  err "Requested PHP package php${PHP_VERSION}-fpm is NOT available for '${CODENAME}' from enabled repos."
+  info "Falling back to distro PHP (may be older/newer than requested)."
+  sudo apt install -y php php-cli php-fpm php-mysql php-xml php-mbstring php-curl php-zip php-bcmath php-intl php-gd
+  ok "Distro PHP installed as fallback."
 fi
 
-# ---------------- INSTALL MYSQL ----------------
-sudo apt install -y mysql-server           # Install MySQL server
-sudo systemctl enable mysql          # Enable MySQL to start on boot 
-sudo systemctl start mysql         # Start MySQL service
-
-# ---------------- INSTALL COMPOSER ----------------
-if ! command -v composer &>/dev/null; then         # Check if Composer is not installed
-  curl -sS https://getcomposer.org/installer -o composer-setup.php      # Download Composer installer
-  sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer     # Install Composer globally
-  rm composer-setup.php        # Clean up installer
+# Restart php-fpm service if exists
+if systemctl --type=service --all --no-pager --no-legend | grep -q "php.*-fpm"; then
+  info "Restarting any php-fpm service found..."
+  # detect actual service name (e.g., php8.2-fpm or php-fpm)
+  if systemctl list-units --type=service --all | grep -q "php${PHP_VERSION}-fpm"; then
+    sudo systemctl restart "php${PHP_VERSION}-fpm"
+  else
+    # restart generic php-fpm if present
+    if systemctl list-units --type=service --all | grep -q "php-fpm"; then
+      sudo systemctl restart php-fpm
+    fi
+  fi
+  ok "php-fpm restarted (if present)."
 fi
 
-# ---------------- CLONE GITHUB REPO ----------------
-echo ""         ## New line for readability
-read -p "Enter GitHub Repo URL: " REPO_URL  # Prompt for repo URL
-[[ -z "$REPO_URL" ]] && { echo "Repo URL is required!"; exit 1; }  # Exit if empty
+# Install MySQL
+info "Installing MySQL server..."
+sudo apt install -y mysql-server
+sudo systemctl enable --now mysql
+ok "MySQL installed and started."
 
-git clone "$REPO_URL"  # Clone the specified repo
+# Install Composer (if missing)
+if ! command -v composer &>/dev/null; then
+  info "Installing Composer..."
+  curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+  sudo php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+  rm -f /tmp/composer-setup.php
+  ok "Composer installed."
+else
+  info "Composer already installed."
+fi
 
-# ======================================================
-# SHOW INSTALLED VERSIONS & SERVICE STATUS
-# ======================================================
+# Clone repo (interactive)
+echo
+read -r -p "Enter GitHub Repo URL to clone (or leave empty to skip): " REPO_URL
+if [ -n "${REPO_URL}" ]; then
+  TARGET_DIR="$(basename "${REPO_URL}" .git)"
+  if [ -d "${TARGET_DIR}" ]; then
+    info "Directory '${TARGET_DIR}' already exists. Skipping clone."
+  else
+    info "Cloning ${REPO_URL} ..."
+    git clone "${REPO_URL}"
+    ok "Repository cloned to ./${TARGET_DIR}"
+  fi
+else
+  info "No repo URL provided. Skipping clone."
+fi
 
-echo ""
+# Summary
+echo
 echo "===================================="
 echo "📊 INSTALLATION SUMMARY"
 echo "===================================="
 
-echo "➡ PHP Version:"  #   Display PHP version  
-php -v | head -n 1   # Get first line of PHP version
-echo ""  # New line for readability
-
-echo "➡ PHP-FPM Service:"  # Display PHP-FPM service status
-sudo systemctl status php${PHP_VERSION}-fpm --no-pager | head -n 5  # Get first 5 lines of status
-echo ""   # New line for readability
-
-echo "➡ MySQL Version:"  # Display MySQL version
-mysql --version  # Get MySQL version
-echo ""  # New line for readability
-
-echo "➡ MySQL Service:"  # Display MySQL service status
-sudo systemctl status mysql --no-pager | head -n 5  # Get first 5 lines of status
-echo ""     # New line for readability
-
-echo "➡ Composer Version:"     # Display Composer version
-composer -V  # Get Composer version
-echo ""   # New line for readability    
-
-echo "➡ Git Version:"       # Display Git version
-git --version               # Get Git version
-echo ""                    # New line for readability
-
+echo "➡ OS codename: ${CODENAME}"
+echo "➡ PHP target: ${PHP_VERSION}"
+echo ""
+echo "➡ PHP version (installed):"
+php -v | head -n 1 || echo "php command not found"
+echo ""
+echo "➡ PHP-FPM service status (top lines):"
+if systemctl list-units --type=service --all | grep -q "php.*-fpm"; then
+  sudo systemctl status "php${PHP_VERSION}-fpm" --no-pager | sed -n '1,6p' || true
+else
+  sudo systemctl status php-fpm --no-pager | sed -n '1,6p' || true
+fi
+echo ""
+echo "➡ MySQL version:"
+mysql --version || echo "mysql command not found"
+echo ""
+echo "➡ Composer version:"
+composer -V || echo "composer not found"
+echo ""
+echo "➡ Git version:"
+git --version || true
+echo ""
 echo "===================================="
-echo "🎉 Setup complete!"                               
+echo "🎉 Setup script finished."
+echo "If php${PHP_VERSION}-fpm was not available, consider using an OS that ondrej/php supports or use Docker."
 echo "===================================="
