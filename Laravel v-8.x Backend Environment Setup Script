@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# Minimal Laravel 8 environment setup (PHP 8.x, Nginx, MySQL, Composer, Node.js)
+# Clean version: minimal logging, strict errors, simple prompts
+#
+# Usage:
+#   ./laravel8-setup.sh [PHP_VERSION]
+# Example:
+#   ./laravel8-setup.sh 8.1
+
+set -euo pipefail
+
+# ---------------- CONFIG ----------------
+PHP_VERSION="${1:-8.1}"   # Default to PHP 8.1 if not provided. Accepts 8.0, 8.1, 8.2, 8.3, 8.4, etc.
+REPO_URL="${2:-}"         # Optional: pass repo URL as 2nd arg to skip prompt
+
+# Basic guard: require major version 8.*
+if [[ ! "$PHP_VERSION" =~ ^8\.[0-9]+$ ]]; then
+  echo "Error: Please supply a PHP 8.x version (e.g. 8.0, 8.1, 8.2). Got: $PHP_VERSION"
+  exit 1
+fi
+
+echo "===================================="
+echo "🔧 Laravel 8 environment setup (PHP $PHP_VERSION)"
+echo "===================================="
+
+# ---------------- UPDATE + BASICS ----------------
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt install -y software-properties-common apt-transport-https ca-certificates gnupg curl git unzip wget
+
+# ---------------- ADD REPOSITORIES ----------------
+# Ondřej Surý PPA for PHP (commonly used)
+sudo add-apt-repository -y ppa:ondrej/php
+sudo apt update -y
+
+# NodeSource for Node.js LTS (will install node 18.x by default) - used for npm, build tools
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+
+# ---------------- INSTALL PHP + EXTENSIONS ----------------
+PHP_PKGS=(
+  "php${PHP_VERSION}"
+  "php${PHP_VERSION}-cli"
+  "php${PHP_VERSION}-fpm"
+  "php${PHP_VERSION}-common"
+  "php${PHP_VERSION}-mysql"
+  "php${PHP_VERSION}-xml"
+  "php${PHP_VERSION}-mbstring"
+  "php${PHP_VERSION}-curl"
+  "php${PHP_VERSION}-zip"
+  "php${PHP_VERSION}-bcmath"
+  "php${PHP_VERSION}-intl"
+  "php${PHP_VERSION}-gd"
+  "php${PHP_VERSION}-opcache"
+  "php${PHP_VERSION}-soap"
+  "php${PHP_VERSION}-imap"      # optional, remove if not needed
+  "php${PHP_VERSION}-readline"
+  "php${PHP_VERSION}-dev"
+)
+
+# Try install; on failure try again without -dev as a fallback
+if ! sudo apt install -y "${PHP_PKGS[@]}"; then
+  echo "⚠️  First attempt to install PHP packages failed. Retrying without php*-dev..."
+  PHP_PKGS_FALLBACK=("${PHP_PKGS[@]/php${PHP_VERSION}-dev/}")
+  sudo apt install -y "${PHP_PKGS_FALLBACK[@]}"
+fi
+
+# Restart php-fpm if available
+if systemctl list-units --type=service --all | grep -q "php${PHP_VERSION}-fpm"; then
+  sudo systemctl enable --now "php${PHP_VERSION}-fpm"
+fi
+
+# ---------------- INSTALL NGINX ----------------
+sudo apt install -y nginx
+sudo systemctl enable --now nginx
+
+# ---------------- INSTALL MYSQL ----------------
+sudo apt install -y mysql-server
+sudo systemctl enable --now mysql
+
+# ---------------- INSTALL COMPOSER ----------------
+if ! command -v composer &>/dev/null; then
+  echo "Installing Composer..."
+  curl -sS https://getcomposer.org/installer -o composer-setup.php
+  sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+  rm composer-setup.php
+else
+  echo "Composer already installed."
+fi
+
+# ---------------- INSTALL NODE.JS + NPM ----------------
+sudo apt install -y nodejs
+# verify npm & node
+node -v || true
+npm -v || true
+
+# ---------------- OPTIONAL: UFW firewall open common ports ----------------
+if command -v ufw &>/dev/null; then
+  sudo ufw allow OpenSSH || true
+  sudo ufw allow 'Nginx Full' || true   # ports 80 and 443
+  # optional app port often used for dev servers (4321, 8000, etc.) - do not open by default
+fi
+
+# ---------------- CLONE GITHUB REPO ----------------
+if [[ -z "$REPO_URL" ]]; then
+  read -r -p "Enter GitHub Repo URL to clone (leave empty to skip): " REPO_URL
+fi
+
+if [[ -n "$REPO_URL" ]]; then
+  TARGET_DIR="$(basename -s .git "$REPO_URL")"
+  if [[ -d "$TARGET_DIR" ]]; then
+    echo "Directory '$TARGET_DIR' already exists. Skipping clone."
+  else
+    git clone "$REPO_URL"
+  fi
+fi
+
+# ---------------- POST-CLONE COMMON STEPS (if repo cloned) ----------------
+if [[ -n "${TARGET_DIR:-}" && -d "$TARGET_DIR" ]]; then
+  echo "Running post-clone setup in $TARGET_DIR..."
+  cd "$TARGET_DIR"
+
+  # install composer deps if composer.json present
+  if [[ -f composer.json ]]; then
+    composer install --no-interaction --prefer-dist --optimize-autoloader || true
+  fi
+
+  # copy .env.example to .env if missing
+  if [[ -f .env.example && ! -f .env ]]; then
+    cp .env.example .env
+    php -r "file_put_contents('.env', str_replace('DB_HOST=127.0.0.1','DB_HOST=127.0.0.1',file_get_contents('.env')));"
+  fi
+
+  # generate app key (safe to run even if already set)
+  if command -v php &>/dev/null && [[ -f artisan ]]; then
+    php artisan key:generate || true
+  fi
+
+  # npm install & build if package.json present
+  if [[ -f package.json ]]; then
+    npm install --no-audit --no-fund || true
+    # do not assume which script the repo uses; fallback to build if present
+    if npm run | grep -q ' build'; then
+      npm run build || true
+    fi
+  fi
+fi
+
+# ======================================================
+# SHOW INSTALLED VERSIONS & SERVICE STATUS
+# ======================================================
+
+echo ""
+echo "===================================="
+echo "📊 INSTALLATION SUMMARY"
+echo "===================================="
+
+echo "➡ PHP (cli):"
+php -v | head -n 1 || echo "php not found"
+echo ""
+
+echo "➡ PHP-FPM Service (status snippet):"
+if systemctl list-units --type=service --all | grep -q "php${PHP_VERSION}-fpm"; then
+  sudo systemctl status "php${PHP_VERSION}-fpm" --no-pager | sed -n '1,6p' || true
+else
+  echo "php${PHP_VERSION}-fpm service not found."
+fi
+echo ""
+
+echo "➡ Nginx status snippet:"
+sudo systemctl status nginx --no-pager | sed -n '1,6p' || true
+echo ""
+
+echo "➡ MySQL version:"
+mysql --version || echo "mysql not found"
+echo ""
+
+echo "➡ Composer version:"
+composer -V || true
+echo ""
+
+echo "➡ Node / NPM versions:"
+node -v || true
+npm -v || true
+echo ""
+
+echo "➡ Git version:"
+git --version || true
+echo ""
+
+echo "===================================="
+echo "🎉 Setup complete!"
+echo "Notes:"
+echo " - PHP version installed: $PHP_VERSION"
+echo " - If you use a different webserver configuration (e.g. Apache), configure php-fpm / php-fpm socket accordingly."
+echo " - Create an Nginx site block for your Laravel public/ directory and enable it (example available on request)."
+echo " - If you want automatic DB secure setup, run: sudo mysql_secure_installation"
+echo "===================================="
