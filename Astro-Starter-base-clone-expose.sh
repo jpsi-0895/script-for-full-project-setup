@@ -115,6 +115,6 @@ sudo systemctl enable nginx # Enable Nginx to start on boot
 if command -v ufw >/dev/null 2>&1; then # Check if UFW is installed
   sudo ufw allow 'Nginx Full' || true
 fi
-
+npm run build 
 echo "✅ Deployment complete!"
-npm run dev -- --host 0.0.0.0 --port 4321
+npx astro preview -- --host 0.0.0.0 --port 4321
