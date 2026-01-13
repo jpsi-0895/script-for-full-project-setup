@@ -79,41 +79,5 @@ cat "$ENV_FILE"
 echo "🏗️  Building Astro project..."
 npm run build   # Build the Astro project
 
-# --- Step 8: Install Nginx ---
-if ! command -v nginx >/dev/null 2>&1; then  # Check if Nginx is installed
-  echo "📦 Installing Nginx..."    
-  sudo apt install -y nginx   # Install Nginx
-fi
-
-# --- Step 9: Configure Nginx ---
-NGINX_CONF="/etc/nginx/sites-available/astro"  # Nginx configuration file path
-sudo rm -f /etc/nginx/sites-enabled/default  # Remove default site
-
-echo "⚙️  Configuring Nginx..."
-sudo bash -c "cat > $NGINX_CONF" <<EOL   
-server {
-    listen 80;
-    server_name _;
-
-    root $(pwd)/dist;
-    index index.html;
-
-    location / {
-        try_files \$uri /index.html;
-    }
-}
-EOL
-
-sudo ln -sf $NGINX_CONF /etc/nginx/sites-enabled/astro  # Enable the new site
-
-# --- Step 10: Restart Nginx ---
-sudo nginx -t   # Test Nginx configuration
-sudo systemctl restart nginx  # Restart Nginx to apply changes
-sudo systemctl enable nginx # Enable Nginx to start on boot
-
-# --- Step 11: Open Firewall ---
-if command -v ufw >/dev/null 2>&1; then # Check if UFW is installed
-  sudo ufw allow 'Nginx Full' || true
-fi
 echo "✅ Deployment complete!"
 npm run dev --host 0.0.0.0 --port 4321
