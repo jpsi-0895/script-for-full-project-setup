@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Minimal Laravel 8 environment setup (PHP 8.x, Nginx, MySQL, Composer, Node.js)
+# Minimal Laravel 8 environment setup (PHP 8.x, MySQL, Composer, Node.js)
 # Clean version: minimal logging, strict errors, simple prompts
 #
 # Usage:
@@ -69,9 +69,6 @@ if systemctl list-units --type=service --all | grep -q "php${PHP_VERSION}-fpm"; 
   sudo systemctl enable --now "php${PHP_VERSION}-fpm"
 fi
 
-# ---------------- INSTALL NGINX ----------------
-sudo apt install -y nginx
-sudo systemctl enable --now nginx
 
 # ---------------- INSTALL MYSQL ----------------
 sudo apt install -y mysql-server
@@ -93,12 +90,7 @@ sudo apt install -y nodejs
 node -v || true
 npm -v || true
 
-# ---------------- OPTIONAL: UFW firewall open common ports ----------------
-if command -v ufw &>/dev/null; then
-  sudo ufw allow OpenSSH || true
-  sudo ufw allow 'Nginx Full' || true   # ports 80 and 443
-  # optional app port often used for dev servers (4321, 8000, etc.) - do not open by default
-fi
+
 
 # ---------------- CLONE GITHUB REPO ----------------
 if [[ -z "$REPO_URL" ]]; then
@@ -164,10 +156,6 @@ if systemctl list-units --type=service --all | grep -q "php${PHP_VERSION}-fpm"; 
 else
   echo "php${PHP_VERSION}-fpm service not found."
 fi
-echo ""
-
-echo "➡ Nginx status snippet:"
-sudo systemctl status nginx --no-pager | sed -n '1,6p' || true
 echo ""
 
 echo "➡ MySQL version:"
